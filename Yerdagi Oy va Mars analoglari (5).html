@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Yerdagi Oy va Mars analoglari</title>
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg:#f3f2ee;--fg:#1d2330;--muted:#5d6577;--card:#ffffff;--line:#d9d8d2;--sea:#1b4f78;
+  --mars:#b8482c;--moon:#3d5a80;color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#10141c;--fg:#e8eaf0;--muted:#9aa3b5;--card:#1a2030;--line:#2b3347;--sea:#12304d;
+    --mars:#f08a67;--moon:#8fb0e0;color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#10141c;--fg:#e8eaf0;--muted:#9aa3b5;--card:#1a2030;--line:#2b3347;--sea:#12304d;
+  --mars:#f08a67;--moon:#8fb0e0;color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:16px/1.5 "Source Sans 3",system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:760px;margin:0 auto;padding:20px 16px 40px}
+h1{font:600 26px/1.2 Georgia,"Times New Roman",serif;margin:0 0 6px}
+.lead{color:var(--muted);margin:0 0 16px;max-width:60ch}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:12px}
+#views{margin-left:6px}
+.seg button{font:inherit;padding:9px 18px;border:0;background:var(--card);color:var(--fg);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.seg button:focus-visible,.list button:focus-visible{outline:3px solid var(--accent);outline-offset:-3px}
+.mapwrap{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--sea)}
+.globe{height:min(92vw,420px);background:radial-gradient(circle at 50% 40%,#17223d,#05080f)}
+.globe canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+svg{display:block;width:100%;height:auto}
+.mk{cursor:pointer}
+.mk .dot{fill:var(--accent);fill-opacity:.95;stroke:#fff;stroke-width:.8}
+.mk.sel .dot{stroke-width:1.6}
+.mk .hit{fill:transparent}
+.hint{color:var(--muted);font-size:14px;margin:8px 0 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0}
+.card h2{font:600 20px/1.25 Georgia,serif;margin:0}
+.card .c{color:var(--muted);margin:0 0 10px}
+.bar{display:grid;grid-template-columns:70px 1fr 44px;align-items:center;gap:8px;margin:6px 0;font-size:15px}
+.bar i{display:block;height:8px;border-radius:4px;background:var(--line);position:relative;overflow:hidden}
+.bar i b{position:absolute;inset:0 auto 0 0;border-radius:4px}
+.bar .m1{background:var(--mars)}.bar .m2{background:var(--moon)}
+.list{display:grid;gap:8px;padding:0;margin:0;list-style:none}
+.list button{width:100%;font:inherit;text-align:left;display:flex;justify-content:space-between;gap:10px;
+  padding:11px 14px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg);cursor:pointer}
+.list button[aria-current="true"]{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+.list span:last-child{font-weight:600;color:var(--accent)}
+.note{color:var(--muted);font-size:14px;margin-top:18px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Yerdagi Oy va Mars analoglari</h1>
+  <p class="lead">Kosmik missiyalardan oldin uskunalar Yerdagi Oy va Marsga oʻxshash joylarda sinab koʻriladi. Sayyorani tanlang, xaritada eng mos joylar kattaroq nuqta bilan chiqadi.</p>
+
+  <div class="seg" role="group" aria-label="Sayyorani tanlang">
+    <button id="bMars" aria-pressed="true">Mars</button>
+    <button id="bMoon" aria-pressed="false">Oy</button>
+  </div>
+  <div class="seg" id="views" role="group" aria-label="Koʻrinish">
+    <button id="bGlobe" aria-pressed="true">3D globus</button>
+    <button id="bFlat" aria-pressed="false">Xarita</button>
+  </div>
+
+  <div class="mapwrap globe" id="globe"></div>
+  <div class="mapwrap" id="flat">
+    <svg id="map" viewBox="0 0 360 180" role="img" aria-label="Dunyo xaritasi va analog joylar"></svg>
+  </div>
+  <p class="hint" id="hint">Globusni sudrab aylantiring, nuqtani bosing.</p>
+
+  <div class="card" id="card"></div>
+  <ul class="list" id="list"></ul>
+
+  <p class="note">Ballar namuna uchun taxminiy baholangan, ilmiy oʻlchov emas. Qit’alar va ranglar sxematik. Keyingi qadam: ballarni NASA va USGS ochiq ma’lumotlari (harorat, yogʻin, relyef, jins tarkibi) asosida hisoblash.</p>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+var SITES = [
+  {n:"Atakama choʻli", c:"Chili", lat:-24.5, lon:-69.2, mars:90, moon:35,
+   why:"Yer yuzidagi eng quruq joylardan biri. Tuprogʻida deyarli hayot yoʻq, shuning uchun Marsda hayot izlash usullari shu yerda sinaladi."},
+  {n:"Mars choʻl tadqiqot stansiyasi", c:"AQSH, Yuta", lat:38.4, lon:-110.8, mars:92, moon:40,
+   why:"Qizil, quruq choʻl va Marsga oʻxshash tog jinslari. Bu yerda ekipajlar Mars missiyasini taqlid qilib yashaydi."},
+  {n:"Devon oroli", c:"Kanada", lat:75.4, lon:-89.8, mars:88, moon:60,
+   why:"Qutb choʻli va meteorit krateri (Haughton). Sovuq, quruq va kraterli relyef Marsni eslatadi."},
+  {n:"Quruq vodiylar", c:"Antarktida", lat:-77.5, lon:162, mars:85, moon:45,
+   why:"Yer yuzidagi eng sovuq va quruq hududlardan. Mars tuprogʻi va muzlagan yer osti suvini oʻrganishga mos."},
+  {n:"Rio-Tinto", c:"Ispaniya", lat:37.7, lon:-6.55, mars:80, moon:20,
+   why:"Daryo suvi kislotali va temirga boy. Mars yuzasidagi minerallarga oʻxshash tarkib uchun oʻrganiladi."},
+  {n:"Askja", c:"Islandiya", lat:65.0, lon:-16.7, mars:78, moon:55,
+   why:"Vulqon jinslari va kul. 1960-yillarda Apollo astronavtlari shu yerda geologiya boʻyicha mashq qilgan."},
+  {n:"Mauna-Kea", c:"AQSH, Gavayi", lat:19.8, lon:-155.5, mars:60, moon:85,
+   why:"Vulqon tuprogʻi Oy regolitiga oʻxshaydi. Oy tuprogʻidan resurs olish texnologiyalari shu yerda sinaladi."},
+  {n:"Meteor krateri", c:"AQSH, Arizona", lat:35.0, lon:-111.0, mars:50, moon:80,
+   why:"Yaxshi saqlangan zarbali krater. Oy kraterlariga oʻxshash relyef, Apollo astronavtlari mashqlari uchun ishlatilgan."},
+  {n:"Lansarote gʻorlari", c:"Ispaniya", lat:29.0, lon:-13.6, mars:55, moon:70,
+   why:"Lava naylari. Oy va Marsdagi lava gʻorlarini baza uchun ishlatish gʻoyasi shu yerda oʻrganiladi."},
+  {n:"Qizilqum choʻli", c:"Oʻzbekiston", lat:42.0, lon:64.0, mars:55, moon:30,
+   why:"Mahalliy goʻshang: quruq, chang bosgan tekislik. Mars bilan oʻxshashligi hali tadqiq qilinmagan, jamoa tekshirib koʻrishi mumkin."}
+];
+
+/* Qirgoqlar: "lon lat lon lat ..." */
+var LAND = [
+"-168 65.6 -162 70 -156 71.3 -141 69.6 -128 70.2 -115 68.5 -108 68.5 -98 68 -90 69 -82 68 -82 63 -90 63.5 -94 60 -94 58.7 -92 57 -85 55.3 -82 53 -79.5 51.5 -79 55 -77 58 -78 62 -72 61.5 -69 60.5 -65 60 -62 57 -60 55 -56 52.5 -60 50 -66 50 -64 49 -61 46 -64 44.5 -66 43.8 -70 43 -70 41.7 -74 40.5 -76 37 -76 35 -80 32 -81 30 -80 26 -81.2 25.2 -82.5 27.5 -84 30 -89 30.2 -92 29.6 -94 29.3 -97 27.8 -97.3 25.5 -97.8 22 -96 19 -94.5 18.2 -91 18.7 -90.5 21 -87 21.5 -87.5 18.5 -88.5 16 -84 15.8 -83.5 12 -83.7 10.5 -81.5 9 -79.5 9.5 -77.5 8.7 -77.3 8 -80 7.3 -82.8 8.3 -85.7 10 -87.5 13 -91.5 14 -94 16 -96 15.7 -101 17.3 -105.5 20 -105.5 22.5 -109 25.5 -111 27.8 -113 31 -114.8 31.7 -114.7 30 -112.8 28 -111.5 25.5 -109.5 23.2 -112 24.5 -114.2 27.5 -115.7 29.8 -117.1 32.5 -118.5 34 -120.6 34.6 -122.4 37.6 -124.3 40.4 -124.2 43 -124 46.2 -124.7 48.4 -123 49 -127 51 -130 54.5 -134 58 -140 59.8 -146 60.8 -152 59.5 -154 57.5 -158 56 -164 54.7 -160 58.5 -162 60 -165 62 -161 64 -166 64.5",
+"-80 73.5 -68 70 -62 66 -65 62.5 -72 63.5 -78 64.5 -74 68 -85 70",
+"-118 72 -105 73 -101 70 -112 69",
+"-90 76.5 -75 78.5 -62 82 -90 81.5 -100 78",
+"-73 78 -58 82 -30 83.5 -18 80 -20 75 -22 70 -33 68 -42 61 -48 61 -53 66 -55 70 -60 76",
+"-24 65.5 -22 66.4 -15 66.3 -13.5 65 -18 63.4 -22 63.8",
+"-59.3 47.6 -56 51.6 -53 49.5 -52.7 47.5 -55 46.9",
+"-85 22 -82 23.2 -77 21.7 -74.2 20.2 -77.8 19.9 -80 21.8 -83.5 22.2",
+"-74.4 18.5 -72 19.9 -68.4 18.6 -71.5 17.7",
+"-5.7 50 1.5 51 1.7 52.8 -0.2 54 -1.7 55.8 -2 57.5 -4 58.6 -6 58.5 -5.5 56 -4.7 54.7 -3 54 -3.2 53 -4.5 52.5 -5 51.7 -3.5 51.4",
+"-10 52 -6 52.2 -6 54.8 -8.5 55 -10 53.8",
+"-77.3 8 -75.5 10.7 -72 12 -71.5 10.5 -68 10.5 -64 10.6 -61 10.5 -60 8.5 -57 6 -53 5.5 -51 4 -50 1.5 -48 -0.5 -44 -2.5 -40 -2.8 -35.5 -5.2 -34.9 -8 -37 -12 -39 -17.5 -41 -22 -44 -23 -48.5 -26 -48.7 -28.5 -50.5 -31 -53.4 -34 -56 -34.9 -58.4 -34.4 -57.2 -36.5 -57.6 -38.2 -62 -39 -62.4 -41 -65 -41 -64.3 -42.8 -65.5 -45 -67.5 -46.6 -66 -48 -68.5 -50.4 -69 -52.3 -68 -54 -71 -54.8 -74 -52 -75.5 -47 -74 -43 -73.5 -39 -71.7 -33 -71.5 -29 -70.3 -23 -70.2 -18.3 -75 -15.4 -77 -12 -79.5 -7.5 -81.2 -5.2 -80.2 -3 -80.2 -1 -79.8 1.5 -78.8 2 -77.3 4 -77.7 6.5",
+"-17 21 -16.5 24 -13 27.7 -10 29.5 -9.8 31 -8.5 33.2 -6 35.8 -2 35.1 3 36.8 10 37.2 11 35 10.2 33.5 15 32.3 20 32.2 20 30.3 25 31.7 30 31.4 32.3 31.2 32.6 29.9 33 27 35 23 37 19 38.5 16 41 14.5 43 12.7 44.5 10.5 51.2 11.8 51 10 48 5 45 2 41.5 -1.5 40 -4 39 -7 39.5 -10.5 40.5 -15 37 -18 35 -20 35.3 -24 32.8 -26 32.7 -28.5 30 -31.5 27 -33.5 22 -34.2 19 -34.4 18.3 -33.5 17.5 -30.5 15 -27 14.5 -22.5 11.8 -17.2 12.5 -13.5 13.5 -11 12.2 -6 9.3 -1.8 9.5 2 8.5 4.3 5 5.8 3.5 6.4 0 5.8 -4 5.2 -7.5 4.4 -11 6.8 -13.2 9 -15 11 -16.7 12.3 -17.5 14.7 -16.5 19",
+"49.3 -12 50.4 -15.5 47.5 -24.8 45 -25.5 43.3 -22.5 44.2 -17 46.4 -15.7",
+"-9 37 -9.4 39 -9 43 -1.8 43.4 -1.2 46 -4.5 48.3 -1.5 48.7 1.5 50.1 4 51.5 8.5 53.7 8.1 55.5 8.6 57.1 10.6 57.7 10.2 56 12 54.5 14 54 19 54.4 21 57 24 57.3 23.5 59.2 30 60 22 60.5 21.4 63 25 65.3 22 65.8 17.5 62.5 18.5 60 16.5 57 14.5 56 12.7 56.2 11.5 58.5 10.5 59.5 8 58 5.5 59 5 61.5 7.5 63.5 12 66 15.5 68.7 20 70 25 71 31 70 40 67.8 44 68.4 54 68.6 60 69.5 67 69 68 72.5 73 73 80 73.2 87 75 100 77.6 104 77.7 113 74 120 73 129 72 140 72.5 150 71.5 160 69.7 170 70 180 69 180 65 177 62.5 170 60 164 59.8 163 56 160 54 156.7 51 156.5 57 155 59.4 143 59.3 137 54.5 141 53 140 48 135 43.5 131 42.7 129.7 41 129.5 37 129 35.2 126.5 34.5 126.5 37.5 125 39.5 121.5 39 122 40.7 118 39 119 37.2 122.5 37 120.5 35 121.7 31.5 121.8 29.5 119.5 25.5 116.5 22.8 113.5 22.2 110 21 108 21.5 106.5 19 109 15 109 12 106.5 9.5 105 8.7 105 10.5 102.5 12 100.5 13.4 99.2 10.5 100.3 7.5 102.2 6.2 103.5 4 104.2 1.4 103.4 1.3 101.3 2.8 100.3 5.5 98.3 8 98.3 10 98.7 13 97.8 16.5 94.5 16.2 94 19 92 21 90.5 22 87 21.4 85 19.5 82 16.5 80.2 13.5 79.8 10.3 78 8.5 77 8 76 10.3 74.8 13 73 17.5 72.8 20.5 72.5 21.7 70.5 20.8 68.8 22.3 70 23 67 24.7 66.5 25.4 61.5 25.1 57.2 25.7 56.8 27 54 26.7 52 27.7 50.5 29.5 48.3 30 48.5 28 50 26.5 51.5 24.6 54 24.2 56.3 26.2 56.5 24.5 58.7 23.5 59.8 22.5 57.8 19 55.2 17.2 52.5 16 49 14.2 45 12.8 43.3 12.7 42.8 16 40.5 20 38.5 24 36.5 28.5 34.9 29.5 34.5 31.5 35.8 34.5 36 36.7 34 36.2 30.5 36.5 28 36.7 27 37.5 26.2 39 26.5 40.2 24 40.8 22.7 40.3 23.5 38 22.5 36.5 21 37.5 19.5 40 19.5 41.8 15.5 44.5 13.5 45.5 12.3 44.8 12.5 43.5 14 42 16 41.5 18.5 40.2 17 39 16.5 38 15.7 38 16 39.5 15.6 40 14.3 40.8 12.4 41.5 10.5 43 8.8 44.4 7 43.7 4 43.4 3 42 0.5 40.5 -0.3 39 0 38.5 -1 37.5 -2.2 36.7 -5.3 36.1 -6.3 36.8 -7.5 37.2",
+"130.9 34 133 35.5 136 36 139.5 38 141.5 41 142 39.5 141 36 140 35 137 34.6 135 33.7 132.5 33.9",
+"140 42 141.5 45.4 145.5 43.3 143 42",
+"130 33.5 131.8 33.3 131 31 130.2 31.3",
+"79.9 9.6 81.8 7.5 80.6 6 79.8 7.5",
+"120.5 18.5 122.2 18.3 122 16 124 13 121.5 13.8 120.5 15",
+"122 7 125.5 9.5 126.5 6.5 125.5 5.8 123.5 7.5",
+"109 1.5 111 1.8 113.8 3.2 117.5 7 119 5 118 1 116.5 -3 114 -4 111 -3 109.5 -1",
+"95.4 5.5 98 4 104 -1.5 106 -5.8 102 -4 98.5 1.5 95.5 3.5",
+"105.3 -6.5 108 -6.3 114.5 -7.7 114 -8.7 106 -7.4",
+"119.4 -5.5 119.8 0 121 1 125 1.5 122 -1 123 -5 121 -3 120.3 -3.5",
+"131 -1 135 -3.3 141 -2.6 147.5 -6 150.5 -10.3 146 -8 143 -9 138 -8 137.5 -5 133 -4",
+"113.5 -22 114.5 -26 115 -34 118 -35 123 -34 129 -31.7 134 -32.5 138 -35 140 -38 145 -38.8 150 -37.5 153 -31 153.5 -26 150 -22.5 146 -19 145.4 -14.5 143.5 -11 142 -10.7 141.5 -15 139.5 -17.5 136.5 -15.5 135.5 -12 131 -11.3 129 -15 125 -14.5 122 -17.5 118 -20.5",
+"144.7 -40.7 148.3 -41 147.8 -43.2 146 -43.5",
+"172.7 -34.5 175 -37 178.5 -37.7 176 -41.5 174.8 -41.3 174.5 -39 173.5 -35.5",
+"172.7 -40.5 174.3 -41.7 171 -44.5 168.3 -46.5 166.4 -45.5 169 -43.5 171.5 -41.8",
+"51.5 71.5 56 75 68.5 76.8 60 74.5 55 71.5",
+"-180 -78.5 -160 -78 -150 -76 -130 -74.5 -102 -74 -75 -72 -68 -70 -65 -67 -62 -65 -58 -63.5 -60 -66 -62 -70 -62 -74 -45 -78 -30 -77.5 -20 -72 -5 -70 15 -69.5 30 -70 50 -67.5 70 -68 90 -66 110 -66 130 -66 150 -69 165 -71 170 -72 165 -77 180 -78 180 -90 -180 -90"
+];
+var SEAS = [
+"28 41.5 28.5 44 30 45.5 33 46 35 45 38 47 40 43.5 41.5 41.5 36 41.5 32 41.9 29 41.2",
+"47 45 49 46.5 53 46.5 53 42 54 40 53 37 50.5 37 49 40 49.5 42 47.5 43"
+];
+function P(s){ var a = s.split(" ").map(Number), o = [];
+  for (var i = 0; i < a.length; i += 2) o.push([a[i], a[i + 1]]); return o; }
+
+/* Tabiiy koʻrinishdagi tekstura: okean, shelf, biomlar, muz */
+function h(x, y){ var n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return n - Math.floor(n); }
+function vn(x, y){
+  var xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+  var u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  return (h(xi, yi) * (1 - u) + h(xi + 1, yi) * u) * (1 - v) + (h(xi, yi + 1) * (1 - u) + h(xi + 1, yi + 1) * u) * v;
+}
+function fbm(x, y){ return vn(x, y) * 0.6 + vn(x * 2, y * 2) * 0.3 + vn(x * 4, y * 4) * 0.1; }
+function mix(a, b, t){ return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
+function cl(t){ return Math.max(0, Math.min(1, t)); }
+
+function makeTex(){
+  var W = 2048, H = 1024, s = W / 360;
+  function poly(ctx, str){
+    ctx.beginPath();
+    P(str).forEach(function(p, i){ var X = (p[0] + 180) * s, Y = (90 - p[1]) * s; if (i) ctx.lineTo(X, Y); else ctx.moveTo(X, Y); });
+    ctx.closePath(); ctx.fill();
+  }
+  var m = document.createElement("canvas"); m.width = W; m.height = H;
+  var mx = m.getContext("2d"); mx.fillStyle = "#000"; mx.fillRect(0, 0, W, H);
+  mx.fillStyle = "#fff"; LAND.forEach(function(p){ poly(mx, p); });
+  mx.fillStyle = "#000"; SEAS.forEach(function(p){ poly(mx, p); });
+  var md = mx.getImageData(0, 0, W, H).data, bd = md;
+  var b = document.createElement("canvas"); b.width = W; b.height = H;
+  var bx = b.getContext("2d");
+  if (typeof bx.filter === "string"){ bx.filter = "blur(9px)"; bx.drawImage(m, 0, 0); bd = bx.getImageData(0, 0, W, H).data; }
+  var c = document.createElement("canvas"); c.width = W; c.height = H;
+  var cx = c.getContext("2d"), img = cx.createImageData(W, H), o = img.data;
+  var deep = [12, 48, 92], shallow = [48, 138, 172], g1 = [44, 110, 54], g2 = [88, 132, 70], g3 = [50, 92, 64];
+  var desert = [201, 173, 118], snow = [238, 243, 248];
+  for (var y = 0; y < H; y++){
+    var lat = 90 - (y + 0.5) / s, al = Math.abs(lat);
+    for (var x = 0; x < W; x++){
+      var lon = (x + 0.5) / s - 180, i = (y * W + x) * 4;
+      var a = md[i] / 255, sh = bd[i] / 255;
+      var n = fbm(lon * 0.3, lat * 0.3), n2 = fbm(lon * 1.6, lat * 1.6);
+      var oc = mix(deep, shallow, cl(sh * 1.7) * 0.85);
+      oc = mix(oc, snow, cl((al - 72) / 10) * 0.75 * cl(n2 * 1.6));
+      var col = oc;
+      if (a > 0.01){
+        var g = al < 30 ? mix(g1, g2, al / 30) : al < 55 ? g2 : mix(g2, g3, cl((al - 55) / 12));
+        var d = cl(Math.max(0, 1 - Math.abs(al - 24) / 13) * (1.9 - 2.4 * n));
+        var lc = mix(g, desert, d), k = 0.86 + 0.28 * n2;
+        lc = [lc[0] * k, lc[1] * k, lc[2] * k];
+        var ic = cl((al - 63) / 8);
+        if (lon > -75 && lon < -12 && lat > 60) ic = 1;
+        lc = mix(lc, snow, ic);
+        col = mix(oc, lc, a);
+      }
+      o[i] = col[0]; o[i + 1] = col[1]; o[i + 2] = col[2]; o[i + 3] = 255;
+    }
+  }
+  cx.putImageData(img, 0, 0);
+  return c;
+}
+
+var target = "mars", sel = 0, TEX = null, G = {ok:false};
+var NS = "http://www.w3.org/2000/svg";
+var map = document.getElementById("map");
+var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+function px(lon){ return lon + 180; }
+function py(lat){ return 90 - lat; }
+function score(s){ return s[target]; }
+function el(tag, attrs){
+  var e = document.createElementNS(NS, tag);
+  for (var k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+function drawBase(){
+  var im = el("image", {x:0, y:0, width:360, height:180, preserveAspectRatio:"none"});
+  var url = TEX.toDataURL("image/jpeg", 0.9);
+  im.setAttribute("href", url);
+  im.setAttributeNS("http://www.w3.org/1999/xlink", "href", url);
+  map.appendChild(im);
+}
+function drawMarkers(){
+  var old = map.querySelector("#mk");
+  if (old) map.removeChild(old);
+  var g = el("g", {id:"mk"});
+  SITES.forEach(function(s, i){
+    var m = el("g", {"class":"mk" + (i === sel ? " sel" : ""), tabindex:"0", role:"button",
+      "aria-label": s.n + ", " + score(s) + " ball"});
+    m.appendChild(el("circle", {"class":"hit", cx:px(s.lon), cy:py(s.lat), r:8}));
+    m.appendChild(el("circle", {"class":"dot", cx:px(s.lon), cy:py(s.lat), r: 1.5 + score(s) / 28}));
+    m.addEventListener("click", function(){ select(i); });
+    m.addEventListener("keydown", function(e){ if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(i); } });
+    g.appendChild(m);
+  });
+  map.appendChild(g);
+}
+function bar(label, v, cls){
+  return '<div class="bar"><span>' + label + '</span><i><b class="' + cls + '" style="width:' + v + '%"></b></i><span>' + v + '</span></div>';
+}
+function drawCard(){
+  var s = SITES[sel];
+  document.getElementById("card").innerHTML =
+    '<h2>' + s.n + '</h2><p class="c">' + s.c + '</p><p>' + s.why + '</p>' +
+    bar("Mars", s.mars, "m1") + bar("Oy", s.moon, "m2");
+}
+function drawList(){
+  var order = SITES.map(function(s, i){ return i; }).sort(function(a, b){ return score(SITES[b]) - score(SITES[a]); });
+  var ul = document.getElementById("list"); ul.innerHTML = "";
+  order.forEach(function(i){
+    var li = document.createElement("li"), b = document.createElement("button");
+    b.innerHTML = "<span>" + SITES[i].n + ", " + SITES[i].c + "</span><span>" + score(SITES[i]) + "</span>";
+    if (i === sel) b.setAttribute("aria-current", "true");
+    b.addEventListener("click", function(){ select(i); });
+    li.appendChild(b); ul.appendChild(li);
+  });
+}
+function render(){
+  document.documentElement.style.setProperty("--accent", target === "mars" ? "var(--mars)" : "var(--moon)");
+  document.getElementById("bMars").setAttribute("aria-pressed", target === "mars");
+  document.getElementById("bMoon").setAttribute("aria-pressed", target === "moon");
+  drawMarkers(); drawCard(); drawList();
+  if (G.ok) updateGlobe();
+}
+function select(i){ sel = i; render(); if (G.ok) faceSite(i); }
+function setTarget(t){
+  target = t;
+  var best = 0;
+  SITES.forEach(function(s, i){ if (s[t] > SITES[best][t]) best = i; });
+  sel = best; render();
+  if (G.ok) faceSite(best);
+}
+
+/* 3D globus */
+function vec(lat, lon, R){
+  var f = (lon + 180) * Math.PI / 180, a = lat * Math.PI / 180;
+  return new THREE.Vector3(-Math.cos(f) * Math.cos(a) * R, Math.sin(a) * R, Math.sin(f) * Math.cos(a) * R);
+}
+function angDiff(a, b){ var d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; }
+function draw(){ G.rd.render(G.sc, G.cam); }
+function tick(){
+  var g = G.goal; if (!g) return;
+  var ro = G.root.rotation;
+  ro.y += angDiff(g.y, ro.y) * 0.14; ro.x += (g.x - ro.x) * 0.14;
+  if (Math.abs(angDiff(g.y, ro.y)) < 0.002 && Math.abs(g.x - ro.x) < 0.002){ ro.y = g.y; ro.x = g.x; G.goal = null; draw(); return; }
+  draw(); requestAnimationFrame(tick);
+}
+function faceSite(i){
+  var s = SITES[i], f = (s.lon + 180) * Math.PI / 180;
+  var gy = Math.atan2(Math.cos(f), Math.sin(f)), gx = s.lat * Math.PI / 180;
+  if (reduced){ G.root.rotation.set(gx, gy, 0); draw(); return; }
+  G.goal = {x:gx, y:gy}; requestAnimationFrame(tick);
+}
+function updateGlobe(){
+  var p = G.pins;
+  while (p.children.length) p.remove(p.children[0]);
+  var col = new THREE.Color(target === "mars" ? 0xff8a5c : 0xa9c8ff), white = new THREE.Color(0xffffff);
+  SITES.forEach(function(s, i){
+    var m = new THREE.Mesh(new THREE.SphereGeometry(0.03 + score(s) / 2600, 16, 12),
+      new THREE.MeshBasicMaterial({color: i === sel ? white : col}));
+    m.position.copy(vec(s.lat, s.lon, 1.012)); m.userData.i = i;
+    if (i === sel) m.scale.setScalar(1.6);
+    p.add(m);
+  });
+  draw();
+}
+function initGlobe(){
+  try {
+    var box = document.getElementById("globe");
+    var rd = new THREE.WebGLRenderer({antialias:true, alpha:true});
+    rd.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    box.appendChild(rd.domElement);
+    var sc = new THREE.Scene(), cam = new THREE.PerspectiveCamera(38, 1, 0.1, 50);
+    cam.position.z = 3.7;
+    sc.add(new THREE.AmbientLight(0xffffff, 0.62));
+    var sun = new THREE.DirectionalLight(0xffffff, 0.95); sun.position.set(-2.5, 1.6, 3); sc.add(sun);
+    var tex = new THREE.CanvasTexture(TEX);
+    if (rd.capabilities.getMaxAnisotropy) tex.anisotropy = Math.min(8, rd.capabilities.getMaxAnisotropy());
+    var root = new THREE.Group(); sc.add(root);
+    var earth = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 64), new THREE.MeshLambertMaterial({map:tex}));
+    root.add(earth);
+    var glow = new THREE.Mesh(new THREE.SphereGeometry(1.14, 64, 48), new THREE.ShaderMaterial({
+      vertexShader: "varying vec3 vN; void main(){ vN = normalize(normalMatrix * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+      fragmentShader: "varying vec3 vN; void main(){ float i = pow(max(0.0, 0.72 - dot(vN, vec3(0.0, 0.0, 1.0))), 3.2) * 2.2; gl_FragColor = vec4(0.38, 0.65, 1.0, clamp(i, 0.0, 1.0)); }",
+      side: THREE.BackSide, transparent: true, depthWrite: false
+    }));
+    sc.add(glow);
+    var pins = new THREE.Group(); root.add(pins);
+    G = {ok:true, rd:rd, sc:sc, cam:cam, root:root, pins:pins, goal:null};
+    G.fit = function(){
+      var w = box.clientWidth, h = box.clientHeight; if (!w || !h) return;
+      rd.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); draw();
+    };
+    var cv = rd.domElement, down = null;
+    cv.addEventListener("pointerdown", function(e){
+      down = {x:e.clientX, y:e.clientY, mx:e.clientX, my:e.clientY, moved:false}; G.goal = null;
+      cv.setPointerCapture(e.pointerId);
+    });
+    cv.addEventListener("pointermove", function(e){
+      if (!down) return;
+      var dx = e.clientX - down.mx, dy = e.clientY - down.my; down.mx = e.clientX; down.my = e.clientY;
+      if (Math.abs(e.clientX - down.x) + Math.abs(e.clientY - down.y) > 5) down.moved = true;
+      root.rotation.y += dx * 0.006;
+      root.rotation.x = Math.max(-1.3, Math.min(1.3, root.rotation.x + dy * 0.006));
+      draw();
+    });
+    cv.addEventListener("pointerup", function(e){
+      if (down && !down.moved){
+        var r = cv.getBoundingClientRect();
+        var m = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+        var rc = new THREE.Raycaster(); rc.setFromCamera(m, cam);
+        var hit = rc.intersectObjects([earth].concat(pins.children), false)[0];
+        if (hit && hit.object.userData.i !== undefined) select(hit.object.userData.i);
+      }
+      down = null;
+    });
+    cv.addEventListener("pointercancel", function(){ down = null; });
+    window.addEventListener("resize", G.fit);
+    G.fit();
+  } catch (err) {
+    G = {ok:false};
+    document.getElementById("views").hidden = true;
+    document.getElementById("globe").hidden = true;
+    document.getElementById("hint").hidden = true;
+  }
+}
+function setView(v){
+  var g = v === "globe" && G.ok;
+  document.getElementById("globe").hidden = !g;
+  document.getElementById("hint").hidden = !g;
+  document.getElementById("flat").hidden = g;
+  document.getElementById("bGlobe").setAttribute("aria-pressed", g);
+  document.getElementById("bFlat").setAttribute("aria-pressed", !g);
+  if (g){ G.fit(); draw(); }
+}
+
+document.getElementById("bMars").addEventListener("click", function(){ setTarget("mars"); });
+document.getElementById("bMoon").addEventListener("click", function(){ setTarget("moon"); });
+document.getElementById("bGlobe").addEventListener("click", function(){ setView("globe"); });
+document.getElementById("bFlat").addEventListener("click", function(){ setView("flat"); });
+
+TEX = makeTex();
+drawBase();
+initGlobe();
+setTarget("mars");
+setView("globe");
+</script>
+</body>
+</html>
